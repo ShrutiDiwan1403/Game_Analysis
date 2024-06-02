@@ -1,8 +1,6 @@
 Dataset Description:
 
 
-
-
 Player Details Table:
 • `P_ID`: Player ID 
 
@@ -17,16 +15,23 @@ Player Details Table:
 • `L2_code`: Systemgenerated Level 2 Code 
 
 
-
-
 Level Details Table:
 • `P_ID`: Player ID 
+
 • `Dev_ID`: Device ID 
+
 • `start_time`: Start Time 
-• `stages_crossed`: Stages Crossed 
+
+• `stages_crossed`: Stages Crossed
+
 • `level`: Game Level 
+
 • `difficulty`: Difficulty Level 
+
 • `kill_count`: Kill Count 
+
 • `headshots_count`: Headshots Count 
+
 • `score`: Player Score 
+
 • `lives_earned`: Extra Lives Earned
