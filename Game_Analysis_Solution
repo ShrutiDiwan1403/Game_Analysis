@@ -1,0 +1,337 @@
+SELECT * FROM player_details;
+
+SELECT * FROM level_details;
+
+
+
+----Finding all the players with their player id, and device id  at Level 0----
+SELECT PD.P_ID, LD.Dev_ID, PD.PName, LD.difficulty
+FROM level_details LD 
+JOIN player_details PD
+ON LD.P_ID = PD.P_ID 
+WHERE level = '0';
+
+
+
+----Number of stages crossed at difficulty level for level 2 players----
+SELECT DISTINCT P_ID, SUM(stages_crossed) as Total_Stages
+FROM level_details 
+WHERE level = '2'
+GROUP BY P_ID;
+
+
+
+----Finding lives earned, when 3 stages are crossed using zm seres devices. Also find the level 1 code, and average kill count----
+WITH Filtered_Data AS (
+    SELECT LD.P_ID, PD.L1_code, LD.Stages_crossed, LD.Kill_Count,LD.Lives_Earned, LD.Dev_ID
+    FROM player_details PD
+    JOIN level_details LD ON PD.P_ID = LD.P_ID
+    WHERE LD.Lives_Earned = '2' AND LD.Stages_Crossed >= 3 AND LD.Dev_ID LIKE 'zm_%'
+)
+SELECT P_ID,L1_code, AVG(Kill_Count) AS Avg_Kill_Count, SUM(Stages_crossed) AS Total_Stages_Crossed
+FROM Filtered_Data
+GROUP BY L1_code, P_ID
+ORDER BY Total_Stages_Crossed DESC;
+
+
+
+----Find the player id and total number of uique dates  for players who have played multiple games----
+SELECT P_ID, COUNT(DISTINCT CAST(TimeStamp AS DATE)) AS Distinct_Dates
+FROM level_details 
+GROUP BY P_ID 
+HAVING COUNT(DISTINCT CAST(TimeStamp AS DATE)) > 1;
+
+
+
+----Find the player id, levelwise, where sum of kill count is greater than the average kill count----
+----And the difficulty level is medium----
+SELECT P_ID, Level,kill_count
+FROM level_details
+GROUP BY P_ID
+HAVING difficulty = 'Medium' AND 
+SUM(kill_count) > AVG(kill_count);
+
+--OR--
+
+SELECT * FROM level_details;
+
+CREATE TABLE AvgKillCountMedium AS 
+    SELECT AVG(Kill_Count) AS AvgKillCount
+    FROM level_details
+    WHERE Difficulty = 'Medium';
+    
+
+CREATE TABLE FilteredKills AS 
+    SELECT 
+        P_ID, 
+        Level, 
+        Kill_Count,
+        Difficulty
+    FROM 
+        level_details
+    WHERE 
+        Kill_Count > 17 AND
+        Difficulty = 'Medium' 
+        ;
+
+SELECT P_ID, Level,SUM(Kill_Count) AS Total_Kill_Count
+FROM FilteredKills
+GROUP BY P_ID, Level;
+
+SELECT * FROM FilteredKills;             ------ FInd solution for this problem tomorrow
+
+
+
+----Finding the level and corresponding level code and sum of lives earned excluding level 0----
+--the output table should be in ascending order/increasing order--
+SELECT PD.P_ID, LD.Level, SUM(LD.Lives_Earned) AS Sum_Lives_Earned, PD.L1_Code
+FROM  level_details LD 
+JOIN player_details PD
+ON LD.P_ID = PD.P_ID
+WHERE LD.Level = '1' AND PD.L1_Code IS NOT NULL 
+GROUP BY LD.Level, PD.P_ID
+
+UNION ALL 
+
+SELECT PD.P_ID, LD.Level, SUM(LD.Lives_Earned) AS Sum_Lives_Earned, PD.L2_Code
+FROM  level_details LD 
+JOIN player_details PD
+ON LD.P_ID = PD.P_ID
+WHERE LD.Level = '2' AND PD.L2_Code IS NOT NULL 
+GROUP BY LD.Level, PD.P_ID
+ORDER BY LD.Level;
+
+
+
+----Finding the top 3 scores based on Dev ID and Rank, display  difficulty----
+---display the output table in the increasing order of row number---
+CREATE TABLE Score_Rank AS 
+SELECT Difficulty, Dev_ID,Score,
+ROW_NUMBER() OVER (PARTITION BY Dev_ID ORDER BY Score DESC) AS Rank
+FROM level_details;
+
+SELECT Difficulty, Dev_ID,Score,Rank
+FROM Score_Rank
+WHERE Rank <= 3
+ORDER BY Dev_ID, Rank ASC;
+
+
+
+----Finding the first login time for each device ID----
+SELECT Dev_ID, MIN(TimeStamp) AS First_Login   
+FROM level_details
+GROUP BY Dev_ID;
+
+
+
+----Top 5 scores for each difficulty level, rank, and Dev_ID----
+---Explanation: A new table needs to be created because rank window function and where condition doesn't---
+---cause pagination. It leads to misuse of Pagination---
+CREATE TABLE Difficulty_Score_Rank AS 
+SELECT Dev_ID, Difficulty, Score, 
+ROW_NUMBER() OVER (PARTITION BY Difficulty ORDER BY Score DESC) AS Rank
+FROM level_details;
+
+
+SELECT Dev_ID, Difficulty, Score, Rank 
+FROM Difficulty_Score_Rank
+WHERE Rank <= 5
+ORDER BY Rank, Difficulty;
+
+
+
+----Finding the device ID that is first logged in for each player----
+---output should contain player id, device id and first login date----
+SELECT Dev_ID, P_ID , MIN(TimeStamp) AS First_Login 
+FROM level_details
+GROUP BY P_ID;
+
+
+
+----For each player, date, determining how many kill counts were played by the player so far
+----WITHOUT WINDOW FUNCTION----
+SELECT P_ID, TimeStamp, 
+Dev_ID,
+SUM(Kill_Count) AS Kill_Count_So_Far
+FROM level_details
+GROUP BY P_ID, Dev_ID, TimeStamp
+ORDER BY P_ID, TimeStamp;
+
+
+----Finding solution to the above problem using self join----
+SELECT A.P_ID,
+A.Dev_ID,
+A.TimeStamp, 
+SUM(B.Kill_Count) AS Kill_Count_So_Far 
+FROM level_details A
+JOIN level_details B
+ON A.P_ID = B.P_ID
+AND A.TimeStamp >= B.TimeStamp
+GROUP BY A.P_ID, A.Dev_ID, A.TimeStamp
+ORDER BY A.P_ID, A.TimeStamp;
+
+
+----WITH WINDOW FUNCTION----
+WITH player_killer_count AS (
+SELECT P_ID, Dev_ID, TimeStamp, 
+SUM(Kill_Count) OVER(PARTITION BY P_ID ORDER BY TimeStamp ASC) AS Kill_Count_So_Far
+FROM level_details
+)
+SELECT P_ID, TimeStamp,
+Kill_Count_So_Far
+FROM player_killer_count
+ORDER BY P_ID, TimeStamp;
+
+
+
+----Find the cumulative sum of stages crossed over start date-time for each Player ID----
+----the most recent date time is excluded from the list----
+---Explanation: Used partition by because it will improve query performance, aggregation and make the analysis flexible---
+CREATE TABLE CUM_SUM AS 
+SELECT P_ID, TimeStamp, Stages_crossed,
+ROW_NUMBER() OVER(PARTITION BY P_ID ORDER BY TimeStamp DESC) AS RN
+FROM level_details;
+
+
+SELECT * FROM CUM_SUM
+WHERE RN > 1; 
+
+
+SELECT P_ID,
+SUM(Stages_crossed) OVER(ORDER BY TimeStamp DESC) AS SUM_
+FROM CUM_SUM
+ORDER BY P_ID, TimeStamp;
+
+
+
+----Finding the top 3 Highest sum of scores for each Device and Player ID----
+SELECT Dev_ID, P_ID,
+SUM(Score) AS T_Score
+FROM level_details
+GROUP BY Dev_ID, P_ID
+ORDER BY T_score DESC 
+LIMIT 3;
+
+
+
+----Finding the cumulative sum of 
+CREATE TABLE Gamer AS
+SELECT P_ID,
+SUM(Score) AS Total_Score
+FROM level_details
+GROUP BY P_ID ;
+
+SELECT * FROM Gamer;
+
+CREATE TABLE Average_Score AS
+SELECT LD.P_ID, 
+G.Total_Score/ COUNT(*) AS Average_Score
+FROM level_details LD
+JOIN Gamer G 
+ON LD.P_ID = G.P_ID
+GROUP BY LD.P_ID, G.Total_Score;
+
+SELECT * FROM Average_Score;
+
+SELECT LD.P_ID, 
+LD.Dev_ID,
+LD.Score,
+AScore.Average_Score,
+(AScore.Average_Score/2) AS Half_Average_Score
+FROM level_details LD 
+JOIN Average_Score AScore 
+ON LD.P_ID = AScore.P_ID
+HAVING LD.Score > (Ascore.Average_Score/2)
+ORDER BY LD.P_ID;
+
+---OR---
+
+WITH TotalScores AS (
+    SELECT
+        P_ID,
+        SUM(Score) AS Total_Score
+    FROM
+        level_details
+    GROUP BY
+        P_ID
+),
+AverageScores AS (
+    SELECT
+        LD.P_ID,
+        Total_Score / COUNT(*) AS Average_Score
+    FROM
+        level_details LD
+    JOIN
+        TotalScores ts ON LD.P_ID = ts.P_ID
+    GROUP BY
+        LD.P_ID, ts.Total_Score
+)
+SELECT
+    LD.P_ID,
+    LD.Dev_ID,
+    LD.Score,
+    AverageScores.Average_Score,
+    (AverageScores.Average_Score / 2) AS Half_Average_Score
+FROM
+    level_details LD
+JOIN
+    AverageScores ON LD.P_ID = AverageScores.P_ID
+WHERE
+    LD.Score > (AverageScores.Average_Score / 2)
+ORDER BY
+    LD.P_ID, LD.Dev_ID;
+ 
+
+
+----Finding the top n headshot count based on each Dev ID, and ranking them in the increasing order of row number----
+----Also display the difficulty level----
+---A stored procedure is a prepare SQL code that you can save, so the code can be reused over and over again--- 
+CREATE PROCEDURE GetTopNHeadshotsByDevID
+    @n INT AS
+BEGIN
+;WITH RankedHeadshots AS (
+SELECT 
+Dev_ID,
+Headshots_Count,
+Difficulty,
+ROW_NUMBER() OVER (PARTITION BY Dev_ID ORDER BY Headshots_Count DESC) AS rn
+FROM player_details
+    )
+SELECT 
+Dev_ID,
+Headshots_Count,
+Difficulty,
+rn AS Rank
+FROM 
+RankedHeadshots
+WHERE  rn <= @n
+ORDER BY 
+Dev_ID, Rank;
+END;
+
+
+----Method 2: Without Procedure----
+--Declare the number of top records you want to recieve--
+DECLARE @n INT = 3;
+
+WITH RankedHeadshots AS (
+    SELECT 
+        Dev_ID,
+        Headshots_Count,
+        Difficulty,
+        ROW_NUMBER() OVER (PARTITION BY Dev_ID ORDER BY Headshots_Count DESC) AS rn
+    FROM 
+        player_details 
+)
+SELECT 
+    Dev_ID,
+    Headshots_Count,
+    Difficulty,
+    rn
+FROM 
+    RankedHeadshots
+WHERE 
+    rn <= @n
+ORDER BY 
+    Dev_ID,
+    RowNum;
