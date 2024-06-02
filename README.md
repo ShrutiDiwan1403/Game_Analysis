@@ -5,10 +5,15 @@ Dataset Description:
 
 Player Details Table:
 • `P_ID`: Player ID 
+
 • `PName`: Player Name 
+
 • `L1_status`: Level 1 Status 
+
 • `L2_status`: Level 2 Status 
+
 • `L1_code`: Systemgenerated Level 1 Code 
+
 • `L2_code`: Systemgenerated Level 2 Code 
 
 
